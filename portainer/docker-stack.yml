@@ -1,0 +1,35 @@
+version: "3.8"
+
+services:
+
+  app:
+    image: portainer/portainer-ce:latest
+    networks:
+      - proxy
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - data:/data
+    deploy:
+      replicas: 1
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=proxy"
+        - "traefik.http.routers.portainer.entrypoints=websecure"
+        - "traefik.http.routers.portainer.rule=Host(`portainer.juferoga.tk`)"
+        - "traefik.http.routers.portainer.service=portainer"
+        - "traefik.http.services.portainer.loadbalancer.server.port=9000"
+        - "traefik.http.routers.portainer.tls=true"
+        - "traefik.http.routers.portainer.tls.certresolver=production"
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+      placement:
+        constraints: [node.hostname == juferoga.tk]
+
+volumes:
+  data:
+
+networks:
+  proxy:
+    external: true

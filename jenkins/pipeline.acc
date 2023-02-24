@@ -1,0 +1,138 @@
+// ToDo
+// variables de gitlab
+pipeline {
+    agent any
+    options {
+      gitLabConnection('Gitlab')
+      gitlabBuilds(builds: ['Code Test','Build Test', 'Build Image', 'Deploy Service'])
+    }
+
+    stages {
+        stage('SCM') {
+            agent {
+                label 'Jenkins'
+            }
+            steps {
+                git url: 'https://gitlab.com/juferoga/angular.git', branch: 'main'
+                stash name: 'source'
+            }
+        }
+        stage('SonarQube Quality Test') {
+            agent {
+                label 'Jenkins'
+            }
+            environment {
+                scannerHome = tool 'Sonarqube'
+            }
+            tools {
+                nodejs 'Nodejs'
+            }
+            steps {
+                unstash 'source'
+                updateGitlabCommitStatus name: 'Code Test', state: 'running'
+                withSonarQubeEnv('Sonarqube') {
+                    sh '${scannerHome}/bin/sonar-scanner -Dsonar.projectKey=slud'
+                }
+            }
+            post {
+                failure {
+                    updateGitlabCommitStatus name: 'Code Test', state: 'failed'
+                }
+                aborted {
+                    updateGitlabCommitStatus name: 'Code Test', state: 'canceled'
+                }
+            }
+        }
+        stage('SonarQube Quality Gate') {
+            agent {
+                label 'Jenkins'
+            }
+            steps {
+                timeout(time: 1, unit: 'HOURS') {
+                    waitForQualityGate abortPipeline: true, webhookSecretId: 'sonarqube_webhook'
+                }
+            }
+            post {
+                failure {
+                    updateGitlabCommitStatus name: 'Code Test', state: 'failed'
+                }
+                success {
+                    updateGitlabCommitStatus name: 'Code Test', state: 'success'
+                }
+                aborted {
+                    updateGitlabCommitStatus name: 'Code Test', state: 'canceled'
+                }
+            }
+        }
+        stage('Build Code') {
+            agent {
+                label 'Jenkins'
+            }
+            tools {
+                nodejs 'Nodejs'
+            }
+            steps {
+                unstash 'source'
+                updateGitlabCommitStatus name: 'Build Test', state: 'running'
+                sh 'yarn install'
+                sh 'yarn build -- --prod'
+            }
+            post {
+                failure {
+                    updateGitlabCommitStatus name: 'Build Test', state: 'failed'
+                }
+                success {
+                    updateGitlabCommitStatus name: 'Build Test', state: 'success'
+                }
+                aborted {
+                    updateGitlabCommitStatus name: 'Build Test', state: 'canceled'
+                }
+            }
+        }
+        stage('Docker Build') {
+            agent {
+                label 'Juferoga'
+            }
+            steps {
+                unstash 'source'
+                updateGitlabCommitStatus name: 'Build Image', state: 'running'
+                sh 'docker build -t juferoga/angular .'
+                sh 'docker-compose -f docker-stack.yml config'
+            }
+            post {
+                failure {
+                    updateGitlabCommitStatus name: 'Build Image', state: 'failed'
+                }
+                success {
+                    updateGitlabCommitStatus name: 'Build Image', state: 'success'
+                    sh 'docker stack rm slud'
+                }
+                aborted {
+                    updateGitlabCommitStatus name: 'Build Image', state: 'canceled'
+                }
+            }
+        }
+        stage('Docker Deploy') {
+            agent {
+                label 'Juferoga-deploy'
+            }
+            steps {
+                unstash 'source'
+                updateGitlabCommitStatus name: 'Deploy Service', state: 'running'
+                sh 'docker stack deploy -c docker-stack.yml page'
+            }
+            post {
+                failure {
+                    updateGitlabCommitStatus name: 'Deploy Service', state: 'failed'
+                }
+
+    success {
+                    updateGitlabCommitStatus name: 'Deploy Service', state: 'success'
+                }
+                aborted {
+                    updateGitlabCommitStatus name: 'Deploy Service', state: 'canceled'
+                }
+            }
+        }
+    }
+}

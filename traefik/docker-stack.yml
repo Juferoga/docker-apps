@@ -1,0 +1,52 @@
+version: "3"
+
+#volumes:
+#  traefik-ssl-certs:
+#    driver: local
+
+services:
+  traefik:
+    image: traefik:2.6.0
+    networks:
+      - proxy
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - ./:/etc/traefik
+      - $PWD/acme.json:/acme.json
+      #     - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    deploy:
+      replicas: 1
+      labels:
+        #Activamos para que docker pueda leer estas variables.
+        - "traefik.enable=true"
+          #red externa que usa traefik con docker swarm
+        - "traefik.docker.network=reverse_proxy"
+          #Punto de acceso, en esta configuracion websecure forever
+        - "traefik.http.routers.traefik.entrypoints=websecure"
+          #nombre de dominio que traefik va a redireccionar al contenedor.
+        - "traefik.http.routers.traefik.rule=Host(`traefik.juferoga.tk`)"
+          #Nombre del servicio "importante"
+        - "traefik.http.routers.traefik.service=traefik"
+          #Puerto que traefik necesita para exponerlo en rule
+        - "traefik.http.services.traefik.loadbalancer.server.port=8080"
+          #Activando tls al contenedor
+        - "traefik.http.routers.traefik.tls=true"
+          #Seleccionando que certresolver nos dara sertificados "staging" o "production"
+        - "traefik.http.routers.traefik.tls.certresolver=production"
+          #PONIENDO middlewar "auth" para autenticacion al dashborad de traefik
+        - "traefik.http.routers.traefik.middlewares=auth"
+          #Configurando el middlewar "basicauth" con un usuario:
+          #Comando para crear usuarios: echo $(htpasswd -nb user password) | sed -e s/\\$/\\$\\$/g
+        - "traefik.http.middlewares.auth.basicauth.users=juferoga-admin:$apr1$TB3AnRFz$/Pf2Qg7I49esw1sJ3nxWB/"
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+      placement:
+        constraints: [node.hostname == juferoga.tk]
+
+networks:
+  reverse_proxy:
+    external: true
