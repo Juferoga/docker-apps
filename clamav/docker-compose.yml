@@ -1,0 +1,13 @@
+version: '3.1'
+
+services:
+  clamav:
+    build: .
+    image: my-clamav # cambiar mi por empresa :v
+    ports:
+      - "3310:3310"
+    volumes:
+      - clamav_data:/var/lib/clamav
+
+volumes:
+  clamav_data:
